@@ -1,0 +1,11 @@
+{"Name": "hamed zoveydavi",
+ "Type": "Standard MT5 USD",
+ "Server": "ForexTimeFXTM-Demo01",
+ "Login": "", "Password": "",
+ "Investor": "", "initial_balance": 3000,
+ "auto_trade_check_period": 60, "gain_send_time_gmt": 2,
+ "max_total_dd": 12.0, "max_daily_dd": 1.0,
+ "min_position_duration_seconds": 300,
+ "max_position_with_min_duration": 3,
+ "api_sandbox_mode": false, "position_under_min": 3,
+ "total_position_under_min": 5, "reset": false}

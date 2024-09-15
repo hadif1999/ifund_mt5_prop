@@ -1,0 +1,6 @@
+*venv*
+data
+*cache*
+*ssl*
+config_mini
+*nohup*
