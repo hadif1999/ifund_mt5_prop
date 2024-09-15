@@ -9,10 +9,12 @@ from fastapi.responses import PlainTextResponse
 import random
 import json
 from typing import Annotated
+from contextlib import asynccontextmanager
 
 app = FastAPI()
 client = docker.from_env()
-image_name = "hadi1999/meta5_custom_minimal:latest"
+mt5_image_name = "hadi1999/meta5_custom_minimal:latest"
+mt5_rest_image_name = "hadi1999/meta5rest:latest"
 users_data_dir = "./data/users/"  # keep using / at end
 HOST_IP = "51.89.168.20"
 
@@ -72,7 +74,8 @@ def get_active_container_ports(
                 container_dict[id] = container_port
                 break
     if to_list:
-        container_ls = [{"id": c_id, "port": port} for c_id, port in container_dict.items()]
+        container_ls = [{"id": c_id, "port": port} 
+                        for c_id, port in container_dict.items()]
         return container_ls
     return container_dict
 
@@ -83,40 +86,6 @@ def get_container_userpass_from_id(id: str):
     username = [env.split('=')[1] for env in envs if "CUSTOM_USER" in env][0]
     return {"username": username, "password": password}
 
-
-########################### selenium functions ############
-def run_selenium_pipeline(user_data: dict, broker: str,
-                          url: str, username: str,
-                          password: str, account_type="demo", delay=1):
-    from Selenium.src import MT5_Manager
-    mt5 = MT5_Manager(url, username, password)
-    mt5.build_driver()
-    mt5.init(delay=15)
-    mt5.add_broker(broker=broker, delay=delay)
-    mt5.create_new_account(user_data, type=account_type, broker=broker, delay=delay)
-    #mt5.exit_update(delay = delay)
-    #user_data = mt5.read_userdata(delay=delay, raise_empty= False)
-    #mt5.exit_update()
-    #mt5.login_account(delay=delay)
-    #mt5.exit_update()
-    #mt5.autotrade(reset=True, delay=delay)
-    #mt5.activate_IFund_expert(delay=delay)
-    #mt5.exit_update()
-    #mt5.quit()
-    #return user_data
-
-
-def change_meta_account_password(old: str, new: str, url: str,
-                                 container_username: str, container_password: str,
-                                 delay=1):
-    return
-    from Selenium.src import MT5_Manager
-    mt5 = MT5_Manager(url, container_username, container_password)
-    mt5.build_driver()
-    time.sleep(delay+4)
-    mt5.exit_update()
-    mt5.change_account_password(old, new, delay=delay)
-    #mt5.quit()
 
 
 def save_user_json_data(json_data: dict, username: str) -> str:
@@ -138,7 +107,7 @@ def save_user_json_data(json_data: dict, username: str) -> str:
     return json_folder_dir
 
 
-def read_user_json_data(username: str):
+def read_user_json_data(username: str) -> dict:
     global users_data_dir
     json_folder_dir = os.path.abspath(users_data_dir + username)
     json_file_name = json_folder_dir + f"/ifund-config.json"
@@ -187,26 +156,25 @@ async def root():
     return {"msg": "Welcome!"}
 
 
+@asynccontextmanager
+async def startup_callback(app: FastAPI):
+    image_names = [mt5_image_name, mt5_rest_image_name]
+    for image_name in image_names:
+        if not image_exists(image_name):
+            try:
+                build_image(image_name)
+            except Exception as e:
+                raise e
+    
+
+
 @app.post("/containers/create")
-async def create_container(user: User, bgts:BackgroundTasks, 
-                           run_selenium: bool = True, delay: int = 10):
+async def create_container(user: User, bgts:BackgroundTasks):
     print("\n\n")
     print(f"{user = }")
-    run_selenium = False
     global HOST_IP
-    if not image_exists(image_name):
-        try:
-            build_image(image_name)
-        except DockerErrors.DockerException as e:
-            if hasattr(e, "status_code") & hasattr(e, "response"):
-                status_code, msg = e.status_code, e.response.json()["message"]
-                raise HTTPException(status_code, msg)
-        except Exception as e:
-            status_code, msg = 520, f"Error: {e}"
-            raise HTTPException(status_code, msg)
-
     port = generate_random_port()
-    username = user.username.replace(' ', '_')
+    username = user.username.replace(' ', '_').strip()
     ######################## defining initial json data #########
     user_data_json = read_json_template()
     user_data_json["Name"] = " ".join([user.broker_userdata.first_name,
@@ -218,9 +186,9 @@ async def create_container(user: User, bgts:BackgroundTasks,
     user_data_json["initial_balance"] = user.broker_userdata.balance
     user_json_filepath = save_user_json_data(user_data_json, username)  # saves data of config for each user
     config_dir = "/config/.wine/drive_c/users/abc/AppData/Roaming/MetaQuotes/Terminal/Common/Files"
-    #####################################
+    ##################################### building container #### 
     try:
-        container = client.containers.run(image_name, 
+        container = client.containers.run(mt5_image_name, 
                                           restart_policy = {"Name": "always"},
                                           detach=True, ports={3000: port},
                                           mem_limit="1g",
@@ -235,50 +203,10 @@ async def create_container(user: User, bgts:BackgroundTasks,
     except Exception as e:
         status_code, msg = 520, f"Error: {e}"
         raise HTTPException(status_code, msg)
-    ###### starting selenium process to make and login account
-    if run_selenium:
-        mt5_login = ''
-        mt5_password = ''
-        mt5_investor = ''
-        _phone = str(user.broker_userdata.phone).replace('-', '')
-        if _phone[0] == '0': _phone = _phone[1:]
-        input_user_data = {"first_name": user.broker_userdata.first_name,
-                           "second_name": user.broker_userdata.second_name,
-                           "email": user.broker_userdata.email,
-                           "phone": _phone,
-                           "pre_phone": user.broker_userdata.pre_phone,
-                           "deposit": str(user.broker_userdata.balance),
-                           "broker": user.broker_userdata.broker.lower()
-                            }
-
-        print(f"\n{input_user_data = }\n")
-        def selenium_task(user_data: dict, init_delay: float):
-            time.sleep(init_delay)
-            try:
-                user_data = run_selenium_pipeline(user_data = user_data,
-                                              broker = user.broker_userdata.broker, url = f"{HOST_IP}:{port}",
-                                              username = user.username, password = user.password,
-                                              account_type=user.broker_userdata.account_type, 
-                                              delay = 1)
-                mt5_login = user_data["Login"]
-                mt5_password = user_data["Password"]
-                mt5_investor = user_data["Investor"]
-                # toDo: write these data to json file 
-            except Exception as e:
-                from warnings import warn
-                mt5_login = ''
-                mt5_password = ''
-                mt5_investor = ''
-                cid = container.id
-                msg = f"\nexception {e}\n raised from selenium process at {cid}, ignoring\n"
-                raise Exception(msg)
-        # starting selenium process as bg task
-        bgts.add_task(selenium_task, input_user_data, delay)
-    else:
-        mt5_login = ''
-        mt5_password = ''
-        mt5_investor = ''
-    ########################## selenium process ended ##########
+    ########################## adding pass and user to json ##########
+    mt5_login = ''
+    mt5_password = ''
+    mt5_investor = ''
     user_data_json["Login"] = mt5_login
     user_data_json["Password"] = mt5_password
     user_data_json["Investor"] = mt5_investor
@@ -291,7 +219,7 @@ async def create_container(user: User, bgts:BackgroundTasks,
     return {"msg": "mt5 container created",
             "ID": container.id,
             "user": {"username": username,
-                     "password": user.password,
+                     "password": password,
                      "link": auth_url,
                      "balance": user.broker_userdata.balance,
                      "mt5": {
@@ -321,7 +249,8 @@ def logs(id: str):
 
 
 @app.get("/containers/meta5/password/change/{id}")
-def change_meta_password(id: str, old: str, new: str, bgts:BackgroundTasks, delay = 0.5):
+def change_meta_password(id: str, old: str, new: str, 
+                         bgts:BackgroundTasks, delay = 0.5):
     try:
         port = get_active_container_ports().get(id, None)
         login_data = get_container_userpass_from_id(id)
@@ -333,11 +262,6 @@ def change_meta_password(id: str, old: str, new: str, bgts:BackgroundTasks, dela
     except Exception as e:
         status_code, msg = 520, f"Error: {e}"
         raise HTTPException(status_code, msg)
-    
-    def task():
-        global HOST_IP
-        change_meta_account_password(old, new, f"{HOST_IP}:{port}",
-                                    username, password, delay)
     bgts.add_task(task)
     return {"msg": f"password changed for container {id}"}
 
@@ -362,29 +286,28 @@ def stop(id: str):
 
 
 class UserExpertData(BaseModel):
-    Name: str|None = None 
+    Name: str|None 
     Type: str = "Standard MT5 USD"
-    Server: str|None = None
-    Login: int | str | None = None
-    Password: str|None = None
-    Investor: str|None = None
-    initial_balance: int|None = None
-    auto_trade_check_period: int|None = None 
-    gain_send_time_gmt: int|None = None
-    max_total_dd: float|None = None
-    max_daily_dd: float|None = None
-    min_position_duration_seconds: int|None = None
-    max_position_with_min_duration: int|None = None
-    api_sandbox_mode: bool|None = None
-    position_under_min: int | None = None
-    total_position_under_min: int | None = None
-    reset: bool|None = None
+    Server: str|None 
+    Login: int | str | None 
+    Password: str|None 
+    Investor: str|None 
+    initial_balance: int|None 
+    auto_trade_check_period: int|None 
+    gain_send_time_gmt: int|None 
+    max_total_dd: float|None 
+    max_daily_dd: float|None 
+    min_position_duration_seconds: int|None 
+    max_position_with_min_duration: int|None 
+    api_sandbox_mode: bool|None 
+    position_under_min: int | None 
+    total_position_under_min: int | None 
+    reset: bool|None 
 
 
 @app.put("/containers/edit/{id}")
 def edit(id: str, json_data: UserExpertData):
     try:
-        config_dir = "/config/.wine/drive_c/users/abc/AppData/Roaming/MetaQuotes/Terminal/Common/Files"
         username = client.containers.get(id).name
     except DockerErrors.DockerException as e:
         if hasattr(e, "status_code") & hasattr(e, "response"):
@@ -393,11 +316,10 @@ def edit(id: str, json_data: UserExpertData):
     except Exception as e:
         status_code, msg = 520, f"Error: {e}"
         raise HTTPException(status_code, msg)
-    json_data_user = read_user_json_data(username)
-    json_data_dict = json_data.model_dump()
-    new_json_data = {key: json_data_dict[key] 
-                    if key in json_data_dict.keys() and json_data_dict[key] else json_data_user[key]
-                    for key in json_data_user.keys()}
+    json_current_data = read_user_json_data(username)
+    json_input_data = json_data.model_dump(exclude_unset=True,
+                                           exclude_none=True)
+    new_json_data = json_current_data.copy().update(json_input_data)
     rm_user_json_data(username)
     path = save_user_json_data(new_json_data, username)
     return {"msg": f"updated user data for {username}"}
@@ -425,5 +347,5 @@ def status(id: str):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app=app, host="0.0.0.0", port=3000)
+    uvicorn.run(app=app, host="0.0.0.0", port=3000, lifespan=startup_callback)
 
