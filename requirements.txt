@@ -31,4 +31,4 @@ urllib3==2.2.1
 uvicorn==0.29.0
 wsproto==1.2.0
 loguru
-httpx
+httpx[http2]

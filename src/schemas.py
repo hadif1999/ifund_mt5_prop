@@ -36,5 +36,12 @@ class UserExpertData(BaseModel):
     position_under_min: int | None 
     total_position_under_min: int | None 
     reset: bool|None 
+    
+    
+class ChangePassword(BaseModel):
+    old: str
+    new: str 
+    dns: str = "78.140.180.198"
+    dns_port: int = 443
 
     

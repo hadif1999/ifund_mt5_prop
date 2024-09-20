@@ -12,10 +12,22 @@ from typing import Annotated
 from contextlib import asynccontextmanager
 from docker.models.containers import Container
 from loguru import logger
-from src.schemas import User, UserExpertData
+from src.schemas import User, UserExpertData, ChangePassword
 from src.mt5_rest import MT5Rest
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    image_names = [mt5_image_name, MT5Rest.IMAGE_NAME]
+    for image_name in image_names:
+        if not image_exists(image_name):
+                build_image(image_name)
+    yield
+    client.containers.prune()
+    client.volumes.prune()
+
+
+app = FastAPI(lifespan=lifespan)
 client = docker.from_env()
 mt5_image_name = "hadi1999/meta5_custom_minimal:latest"
 users_data_dir = "./data/users/"  # keep using / at end
@@ -58,11 +70,11 @@ def read_json_template(directory: str = '.', name: str = "ifund-config.json"):
 
 
 def get_allocated_ports():
-    return list(get_active_container_ports().values())
+    return list(get_active_container_ports(image_name=mt5_image_name).values())
 
 
 def get_active_container_ids():
-    return list(get_active_container_ports().keys())
+    return list(get_active_container_ports(image_name=mt5_image_name).keys())
 
 
 def get_active_container_ports(
@@ -151,39 +163,57 @@ def create_mt5_rest_container() -> Container:
     return container
 
 
-async def change_meta5_account_password(login: str, old: str, new: str, delay:int = 1):
-    container = create_mt5_rest_container()
+@logger.catch
+async def change_meta5_account_password(login: str, old: str,
+                                        new: str, delay:int = 5, 
+                                        dns: str = "78.140.180.198", dns_port: int = 443):
+    global HOST_IP
+    client.containers.prune()
+    client.volumes.prune()
+    try: 
+        container = client.containers.get("mt5rest")
+    except DockerErrors.NotFound: 
+        container = create_mt5_rest_container()
     time.sleep(delay)
-    ip = container.attrs['NetworkSettings']['IPAddress']
-    MT5Rest.HOST = ip
+    # ip = container.attrs['NetworkSettings']['IPAddress'] # container ip addr
     mt5rest = MT5Rest()
-    token = await mt5rest.connect(login, old)
+    token = await mt5rest.connect(login, old, dns, dns_port)
     response = await mt5rest.change_account_password(new)
-    assert "OK" in response and len(token) > 1, "something went wrong when changing password" 
+    container.remove(force=True) 
     return response
+
+
+def run_selenium_pipeline(user_data: dict, broker: str,
+                          url: str, account_type="demo", delay=1):
+    from Selenium.src import MT5_Manager
+    mt5 = MT5_Manager(url)
+    mt5.build_driver()
+    mt5.init(delay=15)
+    mt5.add_broker(broker=broker, delay=delay)
+    mt5.create_new_account(user_data, type=account_type, broker=broker, delay=delay)
+    #mt5.exit_update(delay = delay)
+    #user_data = mt5.read_userdata(delay=delay, raise_empty= False)
+    #mt5.exit_update()
+    #mt5.login_account(delay=delay)
+    #mt5.exit_update()
+    #mt5.autotrade(reset=True, delay=delay)
+    #mt5.activate_IFund_expert(delay=delay)
+    #mt5.exit_update()
+    #mt5.quit()
+    #return user_data
 
 
 @app.get("/")
 async def root():
     return {"msg": "Welcome!"}
-
-
-@asynccontextmanager
-async def startup_callback(app: FastAPI):
-    image_names = [mt5_image_name, MT5Rest.IMAGE_NAME]
-    for image_name in image_names:
-        if not image_exists(image_name):
-            try:
-                build_image(image_name)
-            except Exception as e:
-                raise e
-    
-
-
+        
+        
+@logger.catch
 @app.post("/containers/create")
-async def create_container(user: User, bgts:BackgroundTasks):
+async def create_container(user: User, bgts:BackgroundTasks, delay:int = 10):
     logger.debug(f"\nnew {user = }")
     global HOST_IP
+    run_selenium = True
     port = generate_random_port()
     username = user.username.replace(' ', '_').strip()
     ######################## defining initial json data #########
@@ -214,6 +244,42 @@ async def create_container(user: User, bgts:BackgroundTasks):
     except Exception as e:
         status_code, msg = 520, f"Error: {e}"
         raise HTTPException(status_code, msg)
+    
+    ###### generating entrance link #####
+    url = f"{HOST_IP}:{port}"
+    password = user.password
+    auth_url = f'http://{username}:{password}@{url}'
+   ################### starting selenium process to make and login account
+    if run_selenium:
+        _phone = str(user.broker_userdata.phone).replace('-', '')
+        if _phone[0] == '0': _phone = _phone[1:]
+        input_user_data = {"first_name": user.broker_userdata.first_name,
+                           "second_name": user.broker_userdata.second_name,
+                           "email": user.broker_userdata.email,
+                           "phone": _phone,
+                           "pre_phone": user.broker_userdata.pre_phone,
+                           "deposit": str(user.broker_userdata.balance),
+                           "broker": user.broker_userdata.broker.lower()
+                            }
+
+        logger.debug(f"\n{input_user_data = }\n")
+        def selenium_task(user_data: dict, init_delay: float):
+            time.sleep(init_delay)
+            try:
+                user_data = run_selenium_pipeline(user_data = user_data,
+                                              broker = user.broker_userdata.broker, url = auth_url,
+                                              account_type=user.broker_userdata.account_type, 
+                                              delay = 1)
+                # toDo: write these data to json file 
+            except Exception as e:
+                cid = container.id
+                msg = f"\nexception {e}\n raised from selenium process at {cid}, ignoring\n"
+                logger.warning(msg)
+                raise Exception(msg)
+        # starting selenium process as bg task
+        bgts.add_task(selenium_task, input_user_data, delay)
+    ########################## selenium process ended ##########
+    
     ########################## adding pass and user to json ##########
     mt5_login = ''
     mt5_password = ''
@@ -223,10 +289,7 @@ async def create_container(user: User, bgts:BackgroundTasks):
     user_data_json["Investor"] = mt5_investor
     user_data_json["initial_balance"] = user.broker_userdata.balance
     user_json_filepath = save_user_json_data(user_data_json, username)
-    url = f"{HOST_IP}:{port}"
-    password = user.password
-    auth_url = f'http://{username}:{password}@{url}'
-    print(f"{auth_url = }")
+    logger.debug(f"{auth_url = }")
     return {"msg": "mt5 container created",
             "ID": container.id,
             "user": {"username": username,
@@ -259,25 +322,30 @@ def logs(id: str):
     return _logs
 
 
-@app.get("/containers/meta5/password/change/{id}")
-def change_meta_password(id: str, old: str, new: str, login: int|str,
-                         bgts:BackgroundTasks, delay = 1):
+@app.put("/meta5/password/change/loginID/{id}/")
+async def change_meta_password(id:int, chpwd: ChangePassword, delay = 1):
+    login, old, new, dns, dns_port = (id, chpwd.old, chpwd.new,
+                                      chpwd.dns, chpwd.dns_port)
     try:
-        bgts.add_task(change_meta5_account_password, login, old, new, delay)
+        response = await change_meta5_account_password(login, old, new, 
+                                                       delay, dns, dns_port)
+        logger.debug(f"{response = }")
     except DockerErrors.DockerException as e:
         if hasattr(e, "status_code") & hasattr(e, "response"):
             status_code, msg = e.status_code, e.response.json()["message"]
-            raise HTTPException(status_code, msg)
+            raise HTTPException(status_code, "DockerError: " + msg)
     except Exception as e:
         status_code, msg = 520, f"Error: {e}"
         raise HTTPException(status_code, msg)
-    return {"msg": f"password changed for container {id}"}
+    success_resp = f"password changed for {login = }"
+    msg = success_resp if "OK" in response else "something went wrong!"
+    return {"msg": msg, "mt5rest_response": response}
 
 
 @app.delete("/containers/{id}")
 def stop(id: str):
     try:
-        container_ports = get_active_container_ports()
+        container_ports = get_active_container_ports(image_name=mt5_image_name)
         client.containers.get(id).stop()
     except DockerErrors.DockerException as e:
         if hasattr(e, "status_code") & hasattr(e, "response"):
@@ -335,5 +403,5 @@ def status(id: str):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app=app, host="0.0.0.0", port=3000, lifespan=startup_callback)
+    uvicorn.run(app=app, host="0.0.0.0", port=3000)
 
