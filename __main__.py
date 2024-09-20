@@ -14,6 +14,11 @@ from docker.models.containers import Container
 from loguru import logger
 from src.schemas import User, UserExpertData, ChangePassword
 from src.mt5_rest import MT5Rest
+from src.docker_utils import (client, build_image, current_image_name_list,
+                              get_allocated_ports, get_active_container_ids,
+                              get_container_userpass_from_id, get_image_name_from_container, 
+                              get_active_container_ports, image_exists, mt5_image_name, 
+                              create_mt5_rest_container, clear_docker_env)
 
 
 @asynccontextmanager
@@ -23,36 +28,12 @@ async def lifespan(app: FastAPI):
         if not image_exists(image_name):
                 build_image(image_name)
     yield
-    client.containers.prune()
-    client.volumes.prune()
+    clear_docker_env()
 
 
 app = FastAPI(lifespan=lifespan)
-client = docker.from_env()
-mt5_image_name = "hadi1999/meta5_custom_minimal:latest"
 users_data_dir = "./data/users/"  # keep using / at end
 HOST_IP = "51.89.168.20"
-
-
-def build_image(image_name: str):
-    image = client.images.pull(image_name)
-    return image.short_id
-
-
-def current_image_name_list() -> list[str]:
-    name_list = [" ".join(image.attrs['RepoTags'])
-                 for image in client.images.list()]
-    return name_list
-
-
-def image_exists(tag_name):
-    return any([tag_name in img_name
-                for img_name in current_image_name_list()])
-    
-    
-def get_image_name_from_container(container: Container) -> str:
-    image_name = client.images.get(container.attrs['Image']).attrs['RepoTags'][0]
-    return image_name
 
 
 def generate_random_port(start: int = 4000, end: int = 7000):
@@ -67,51 +48,6 @@ def read_json_template(directory: str = '.', name: str = "ifund-config.json"):
     with open(f"{directory}/{name}", "r") as file:
         conf_dict = json.loads(file.read())
     return conf_dict
-
-
-def get_allocated_ports():
-    return list(get_active_container_ports(image_name=mt5_image_name).values())
-
-
-def get_active_container_ids():
-    return list(get_active_container_ports(image_name=mt5_image_name).keys())
-
-
-def get_active_container_ports(
-        to_list: bool = False,
-        image_name: str|None = None):  
-    # dict of containers by container id and port container_dict[id] = port
-    container_dict = {}
-    containers = client.containers.list()
-    for c in containers:
-        if image_name: # checking image if provided, adding container to output if equal images
-            image_name_used = get_image_name_from_container(c)
-            if image_name_used != image_name: continue
-        id = c.id
-        container_port = None
-        ports = c.ports
-        for port in ports: # extracting container port
-            if None in ports[port]: continue
-            for p in ports[port]:
-                if p["HostPort"].isdigit():
-                    container_port = p["HostPort"]
-                    break
-            if container_port:
-                container_dict[id] = container_port
-                break
-    if to_list:
-        container_ls = [{"id": c_id, "port": port} 
-                        for c_id, port in container_dict.items()]
-        return container_ls
-    return container_dict
-
-
-def get_container_userpass_from_id(id: str):
-    envs = client.containers.get(id).attrs["Config"]["Env"]
-    password = [env.split('=')[1] for env in envs if "PASSWORD" in env][0]
-    username = [env.split('=')[1] for env in envs if "CUSTOM_USER" in env][0]
-    return {"username": username, "password": password}
-
 
 
 def save_user_json_data(json_data: dict, username: str) -> str:
@@ -156,20 +92,12 @@ def edit_user_json_data(username: str, edited_json: dict):
     return True
 
 
-def create_mt5_rest_container() -> Container:
-    container = client.containers.run(MT5Rest.IMAGE_NAME, auto_remove = True,
-                                      detach=True, ports={80: MT5Rest.PORT}, 
-                                      name="mt5rest", mem_limit="1g")
-    return container
-
-
 @logger.catch
 async def change_meta5_account_password(login: str, old: str,
                                         new: str, delay:int = 5, 
                                         dns: str = "78.140.180.198", dns_port: int = 443):
     global HOST_IP
-    client.containers.prune()
-    client.volumes.prune()
+    clear_docker_env()
     try: 
         container = client.containers.get("mt5rest")
     except DockerErrors.NotFound: 
@@ -302,8 +230,7 @@ def stop(id: str):
     except Exception as e:
         status_code, msg = 520, f"Error: {e}"
         raise HTTPException(status_code, msg)
-    client.volumes.prune()
-    client.containers.prune()
+    clear_docker_env()
     return {"msg": f"container {id} stopped at port {container_ports.get(id, None)}",
             "ID": id,
             "port": container_ports.get(id, None)}

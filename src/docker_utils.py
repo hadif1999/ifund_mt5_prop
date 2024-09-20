@@ -1,3 +1,13 @@
+import docker 
+from docker import errors as DockerErrors
+from docker.models.containers import Container
+from src.mt5_rest import MT5Rest
+
+
+client = docker.from_env()
+mt5_image_name = "hadi1999/meta5_custom_minimal:latest"
+
+
 def build_image(image_name: str):
     image = client.images.pull(image_name)
     return image.short_id
@@ -62,4 +72,16 @@ def get_container_userpass_from_id(id: str):
     password = [env.split('=')[1] for env in envs if "PASSWORD" in env][0]
     username = [env.split('=')[1] for env in envs if "CUSTOM_USER" in env][0]
     return {"username": username, "password": password}
+
+
+def create_mt5_rest_container() -> Container:
+    container = client.containers.run(MT5Rest.IMAGE_NAME, auto_remove = True,
+                                      detach=True, ports={80: MT5Rest.PORT}, 
+                                      name="mt5rest", mem_limit="1g")
+    return container
+
+
+def clear_docker_env():
+    client.containers.prune()
+    client.volumes.prune()
 
