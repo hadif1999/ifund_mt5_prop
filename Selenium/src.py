@@ -353,8 +353,6 @@ def activate_iFund_expert(driver_obj: webdriver.Chrome, delay = 0.5):
     return True
 
 
-
-
 with_leverage_brokers = ["alpari", "fxtm"]
 
 class MT5_Manager:

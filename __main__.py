@@ -183,26 +183,6 @@ async def change_meta5_account_password(login: str, old: str,
     return response
 
 
-def run_selenium_pipeline(user_data: dict, broker: str,
-                          url: str, account_type="demo", delay=1):
-    from Selenium.src import MT5_Manager
-    mt5 = MT5_Manager(url)
-    mt5.build_driver()
-    mt5.init(delay=15)
-    mt5.add_broker(broker=broker, delay=delay)
-    mt5.create_new_account(user_data, type=account_type, broker=broker, delay=delay)
-    #mt5.exit_update(delay = delay)
-    #user_data = mt5.read_userdata(delay=delay, raise_empty= False)
-    #mt5.exit_update()
-    #mt5.login_account(delay=delay)
-    #mt5.exit_update()
-    #mt5.autotrade(reset=True, delay=delay)
-    #mt5.activate_IFund_expert(delay=delay)
-    #mt5.exit_update()
-    #mt5.quit()
-    #return user_data
-
-
 @app.get("/")
 async def root():
     return {"msg": "Welcome!"}
@@ -210,10 +190,9 @@ async def root():
         
 @logger.catch
 @app.post("/containers/create")
-async def create_container(user: User, bgts:BackgroundTasks, delay:int = 10):
+async def create_container(user: User):
     logger.debug(f"\nnew {user = }")
     global HOST_IP
-    run_selenium = True
     port = generate_random_port()
     username = user.username.replace(' ', '_').strip()
     ######################## defining initial json data #########
@@ -248,38 +227,7 @@ async def create_container(user: User, bgts:BackgroundTasks, delay:int = 10):
     ###### generating entrance link #####
     url = f"{HOST_IP}:{port}"
     password = user.password
-    auth_url = f'http://{username}:{password}@{url}'
-   ################### starting selenium process to make and login account
-    if run_selenium:
-        _phone = str(user.broker_userdata.phone).replace('-', '')
-        if _phone[0] == '0': _phone = _phone[1:]
-        input_user_data = {"first_name": user.broker_userdata.first_name,
-                           "second_name": user.broker_userdata.second_name,
-                           "email": user.broker_userdata.email,
-                           "phone": _phone,
-                           "pre_phone": user.broker_userdata.pre_phone,
-                           "deposit": str(user.broker_userdata.balance),
-                           "broker": user.broker_userdata.broker.lower()
-                            }
-
-        logger.debug(f"\n{input_user_data = }\n")
-        def selenium_task(user_data: dict, init_delay: float):
-            time.sleep(init_delay)
-            try:
-                user_data = run_selenium_pipeline(user_data = user_data,
-                                              broker = user.broker_userdata.broker, url = auth_url,
-                                              account_type=user.broker_userdata.account_type, 
-                                              delay = 1)
-                # toDo: write these data to json file 
-            except Exception as e:
-                cid = container.id
-                msg = f"\nexception {e}\n raised from selenium process at {cid}, ignoring\n"
-                logger.warning(msg)
-                raise Exception(msg)
-        # starting selenium process as bg task
-        bgts.add_task(selenium_task, input_user_data, delay)
-    ########################## selenium process ended ##########
-    
+    auth_url = f'http://{username}:{password}@{url}'    
     ########################## adding pass and user to json ##########
     mt5_login = ''
     mt5_password = ''
@@ -308,7 +256,7 @@ async def create_container(user: User, bgts:BackgroundTasks, delay:int = 10):
             }
 
 
-@app.get("/containers/logs/{id}")
+@app.get("/containers/{id}/logs/")
 def logs(id: str):
     try:
         _logs = PlainTextResponse(client.containers.get(id).logs())
@@ -361,7 +309,7 @@ def stop(id: str):
             "port": container_ports.get(id, None)}
 
 
-@app.put("/containers/edit/{id}")
+@app.put("/containers/{id}/edit/")
 def edit(id: str, json_data: UserExpertData):
     try:
         username = client.containers.get(id).name
