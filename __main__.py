@@ -229,8 +229,11 @@ async def change_meta_password(id:int, chpwd: ChangePassword):
 @app.get("/meta5/brokers/{broker:str}/servers", tags=["meta5"])
 async def get_active_servers(broker: str, delay: int = 1):
     clear_docker_env()
-    container = create_mt5_rest_container()
-    await asyncio.sleep(delay)
+    try: 
+        container = client.containers.get("mt5rest")
+    except DockerErrors.NotFound: 
+        container = create_mt5_rest_container()
+        await asyncio.sleep(delay)
     server_names = await MT5Rest.get_broker_ServerNames(broker)
     container.remove(force=True)
     return {"msg": f"fetched servers for {broker}", "servers": server_names}
