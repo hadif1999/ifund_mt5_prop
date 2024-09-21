@@ -82,19 +82,37 @@ class MT5Rest:
         else: 
             ValueError("not connected yet")
 
+
     @staticmethod
     async def find_broker_ips(broker: str):
-        res = await __class__._aget(__class__.SEARCH_BROKER_IPS)
+        res = await __class__._aget(__class__.SEARCH_BROKER_IPS, params={"company":broker})
         dns_ls = res.json()["results"]
-        ip_ls = [ dns["access"] for dns in dns_ls if broker.lower() in dns["name"].lower()][0]
+        dns_name_ls = [dns["name"] for dns in dns_ls]
+        if broker not in dns_name_ls: 
+            raise ValueError(f"broker name {broker} not found in {dns_name_ls}")
+        ip_ls: list[str] = [dns["access"] for dns in dns_ls
+                            if broker.lower() == dns["name"].lower()][0]
+        ip_ls_ping = [{"ip": (ip_sep := ip.split(':'))[0], 
+                       "port": ip_sep[1], 
+                       "ping": await __class__.ping_host(ip_sep[0], ip_sep[1])}
+                       async for ip in ip_ls]
+        ip_ls_ping_sort = sorted(ip_ls_ping, key=lambda x: x["ping"])    
+        return ip_ls_ping_sort
     
+    
+    @staticmethod
+    async def get_broker_ServerNames(broker: str):
+        res = await __class__._aget(__class__.SEARCH_BROKER_IPS, params={"company":broker})
+        dns_ls = res.json()["results"]
+        return [dns["name"] for dns in dns_ls]
+        
 
     @staticmethod
     async def ping_host(ip: str, port: int = 443):
         res = await __class__._aget(__class__.PING_HOST, params={"host":ip,
                                                                  "port":port})
-        pingtime = int(res.text.strip())
-        return pingtime
+        ping_time = int(res.text.strip())
+        return ping_time
     
 
     @staticmethod
@@ -104,7 +122,6 @@ class MT5Rest:
         assert "OK" in res, "problem with connection !"
         return res
             
-
     
     def BaseURL():
         return f"http://{__class__.HOST}:{__class__.PORT}"

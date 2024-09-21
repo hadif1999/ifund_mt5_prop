@@ -101,9 +101,10 @@ async def change_meta5_account_password(login: str, old: str,
         container = client.containers.get("mt5rest")
     except DockerErrors.NotFound: 
         container = create_mt5_rest_container()
-    time.sleep(delay)
-    # ip = container.attrs['NetworkSettings']['IPAddress'] # container ip addr
     mt5rest = MT5Rest()
+    ##### toDo: add caching for find_broker_ips
+    server = (await mt5rest.find_broker_ips(broker))[0] # getting first found server
+    dns, dns_port = server["ip"], server["port"]
     token = await mt5rest.connect(login, old, dns, dns_port)
     response = await mt5rest.change_account_password(new)
     container.remove(force=True) 
@@ -200,7 +201,7 @@ def logs(id: str):
 
 
 @app.put("/meta5/password/change/loginID/{id}/")
-async def change_meta_password(id:int, chpwd: ChangePassword, delay = 1):
+async def change_meta_password(id:int, chpwd: ChangePassword):
     login, old, new, broker = (id, chpwd.old, chpwd.new, chpwd.broker)
     try:
         response = await change_meta5_account_password(login, old, new, broker)
@@ -211,13 +212,24 @@ async def change_meta_password(id:int, chpwd: ChangePassword, delay = 1):
             raise HTTPException(status_code, "DockerError: " + msg)
     except Exception as e:
         status_code, msg = 520, f"Error: {e}"
-        raise HTTPException(status_code, msg)
+        server_names = await MT5Rest.get_broker_ServerNames(broker)
+        server_msg = f", acceptable server names {server_names = }"
+        raise HTTPException(status_code, msg + server_msg)
     if response == "OK":
         success_msg = f"password changed for {login = }"
         return {"msg": success_msg}
     else: 
         error_msg = f"something went wrong, mt5rest response : {response}"
         raise HTTPException(400, error_msg)
+    
+
+@app.get("/meta5/brokers/{broker:str}/")
+@app.get("/meta5/brokers/{broker:str}/servers")
+async def get_active_servers(broker: str):
+    container = create_mt5_rest_container()
+    server_names = await MT5Rest.get_broker_ServerNames(broker)
+    container.remove(force=True)
+    return {"msg": f"fetched servers for {broker}", "servers": server_names}
     
 
 @app.delete("/containers/{id}")
