@@ -89,7 +89,7 @@ class MT5Rest:
         dns_ls = res.json()["results"]
         dns_name_ls = [dns["name"] for dns in dns_ls]
         if broker not in dns_name_ls: 
-            raise ValueError(f"broker name {broker} not found in {dns_name_ls}")
+            raise ValueError(f"broker name {broker} not found in {dns_name_ls")
         ip_ls: list[str] = [dns["access"] for dns in dns_ls
                             if broker.lower() == dns["name"].lower()][0]
         ip_ls_ping = [{"ip": (ip_sep := ip.split(':'))[0], 

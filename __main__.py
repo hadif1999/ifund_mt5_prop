@@ -117,7 +117,7 @@ async def root():
         
         
 @logger.catch
-@app.post("/containers/create")
+@app.post("/containers/create", tags=["container"])
 async def create_container(user: User):
     logger.debug(f"\nnew {user = }")
     global HOST_IP
@@ -186,7 +186,7 @@ async def create_container(user: User):
             }
 
 
-@app.get("/containers/{id}/logs/")
+@app.get("/containers/{id}/logs/", tags=["container"])
 def logs(id: str):
     try:
         _logs = PlainTextResponse(client.containers.get(id).logs())
@@ -200,7 +200,7 @@ def logs(id: str):
     return _logs
 
 
-@app.put("/meta5/password/change/loginID/{id}/")
+@app.put("/meta5/password/change/loginID/{id}/", tags=["meta5"])
 async def change_meta_password(id:int, chpwd: ChangePassword):
     login, old, new, broker = (id, chpwd.old, chpwd.new, chpwd.broker)
     try:
@@ -223,8 +223,8 @@ async def change_meta_password(id:int, chpwd: ChangePassword):
         raise HTTPException(400, error_msg)
     
 
-@app.get("/meta5/brokers/{broker:str}/")
-@app.get("/meta5/brokers/{broker:str}/servers")
+@app.get("/meta5/brokers/{broker:str}/", tags=["meta5"])
+@app.get("/meta5/brokers/{broker:str}/servers", tags=["meta5"])
 async def get_active_servers(broker: str):
     container = create_mt5_rest_container()
     server_names = await MT5Rest.get_broker_ServerNames(broker)
@@ -232,7 +232,7 @@ async def get_active_servers(broker: str):
     return {"msg": f"fetched servers for {broker}", "servers": server_names}
     
 
-@app.delete("/containers/{id}")
+@app.delete("/containers/{id}", tags=["container"])
 def stop(id: str):
     try:
         container_ports = get_active_container_ports(image_name=mt5_image_name)
@@ -250,7 +250,7 @@ def stop(id: str):
             "port": container_ports.get(id, None)}
 
 
-@app.put("/containers/{id}/edit/")
+@app.put("/containers/{id}/edit/", tags=["container"])
 def edit(id: str, json_data: UserExpertData):
     try:
         username = client.containers.get(id).name
@@ -270,7 +270,7 @@ def edit(id: str, json_data: UserExpertData):
     return {"msg": f"updated user data for {username}"}
 
 
-@app.get("/containers/")
+@app.get("/containers/", tags=["container"])
 def list_active_containers(limit: int = 50, page: int = 1):
     max_limit = 50
     if limit > max_limit: raise HTTPException(400, f"limit must lower than {max_limit}")
@@ -279,7 +279,7 @@ def list_active_containers(limit: int = 50, page: int = 1):
             "containers": c_ids}
 
 
-@app.get("/containers/{id}")
+@app.get("/containers/{id}", tags=["container"])
 def status(id: str):
     try:
         state = client.containers.get(id).attrs["State"]
