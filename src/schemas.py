@@ -41,7 +41,4 @@ class UserExpertData(BaseModel):
 class ChangePassword(BaseModel):
     old: str
     new: str 
-    dns: str = "78.140.180.198"
-    dns_port: int = 443
-
-    
+    broker: str

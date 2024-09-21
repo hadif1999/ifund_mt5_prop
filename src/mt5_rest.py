@@ -9,6 +9,8 @@ class MT5Rest:
     CHANGE_PASSWORD = "/ChangePassword"
     CONNECT = "/Connect"
     PING = "/Ping"
+    PING_HOST = "/PingHost"
+    SEARCH_BROKER_IPS = "/Search"
     ####
     PORT = 8000
     HOST = "127.0.0.1"
@@ -79,12 +81,25 @@ class MT5Rest:
             return res
         else: 
             ValueError("not connected yet")
-        
+
+    @staticmethod
+    async def find_broker_ips(broker: str):
+        res = await __class__._aget(__class__.SEARCH_BROKER_IPS)
+        dns_ls = res.json()["results"]
+        ip_ls = [ dns["access"] for dns in dns_ls if broker.lower() in dns["name"].lower()][0]
     
+
+    @staticmethod
+    async def ping_host(ip: str, port: int = 443):
+        res = await __class__._aget(__class__.PING_HOST, params={"host":ip,
+                                                                 "port":port})
+        pingtime = int(res.text.strip())
+        return pingtime
+    
+
     @staticmethod
     async def ping():
-        url = __class__.get_url(__class__.PING)
-        res = await __class__._aget(url)
+        res = await __class__._aget(__class__.PING)
         res = res.text.strip().upper()
         assert "OK" in res, "problem with connection !"
         return res

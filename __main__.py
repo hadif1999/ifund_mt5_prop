@@ -94,8 +94,7 @@ def edit_user_json_data(username: str, edited_json: dict):
 
 @logger.catch
 async def change_meta5_account_password(login: str, old: str,
-                                        new: str, delay:int = 5, 
-                                        dns: str = "78.140.180.198", dns_port: int = 443):
+                                        new: str, broker:str):
     global HOST_IP
     clear_docker_env()
     try: 
@@ -202,11 +201,9 @@ def logs(id: str):
 
 @app.put("/meta5/password/change/loginID/{id}/")
 async def change_meta_password(id:int, chpwd: ChangePassword, delay = 1):
-    login, old, new, dns, dns_port = (id, chpwd.old, chpwd.new,
-                                      chpwd.dns, chpwd.dns_port)
+    login, old, new, broker = (id, chpwd.old, chpwd.new, chpwd.broker)
     try:
-        response = await change_meta5_account_password(login, old, new, 
-                                                       delay, dns, dns_port)
+        response = await change_meta5_account_password(login, old, new, broker)
         logger.debug(f"{response = }")
     except DockerErrors.DockerException as e:
         if hasattr(e, "status_code") & hasattr(e, "response"):
