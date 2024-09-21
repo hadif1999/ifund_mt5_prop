@@ -147,8 +147,10 @@ async def create_container(user: User):
     except DockerErrors.DockerException as e:
         if hasattr(e, "status_code") & hasattr(e, "response"):
             status_code, msg = e.status_code, e.response.json()["message"]
+            logger.error(e)
             raise HTTPException(status_code, msg)
     except Exception as e:
+        logger.error(e)
         status_code, msg = 520, f"Error: {e}"
         raise HTTPException(status_code, msg)
     
@@ -213,10 +215,13 @@ async def change_meta_password(id:int, chpwd: ChangePassword, delay = 1):
     except Exception as e:
         status_code, msg = 520, f"Error: {e}"
         raise HTTPException(status_code, msg)
-    success_resp = f"password changed for {login = }"
-    msg = success_resp if "OK" in response else "something went wrong!"
-    return {"msg": msg, "mt5rest_response": response}
-
+    if response == "OK":
+        success_msg = f"password changed for {login = }"
+        return {"msg": success_msg}
+    else: 
+        error_msg = f"something went wrong, mt5rest response : {response}"
+        raise HTTPException(400, error_msg)
+    
 
 @app.delete("/containers/{id}")
 def stop(id: str):
@@ -258,6 +263,8 @@ def edit(id: str, json_data: UserExpertData):
 
 @app.get("/containers/")
 def list_active_containers(limit: int = 50, page: int = 1):
+    max_limit = 50
+    if limit > max_limit: raise HTTPException(400, f"limit must lower than {max_limit}")
     c_ids = get_active_container_ports(True, mt5_image_name)[(page-1)*limit : page*limit]
     return {"msg": "fetched active containers",
             "containers": c_ids}
