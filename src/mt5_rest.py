@@ -102,7 +102,8 @@ class MT5Rest:
         ip_ls_ping = [{"ip": (ip_sep := ip.split(':'))[0], 
                        "port": ip_sep[1], 
                        "ping": await __class__.ping_host(ip_sep[0], ip_sep[1])}
-                       async for ip in ip_ls]
+                       for ip in ip_ls]
+        # sort by ping
         ip_ls_ping_sort = sorted(ip_ls_ping, key=lambda x: x["ping"])    
         return ip_ls_ping_sort
     
