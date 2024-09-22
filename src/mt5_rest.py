@@ -81,17 +81,24 @@ class MT5Rest:
             return res
         else: 
             ValueError("not connected yet")
+            
+            
+    @staticmethod
+    async def _find_broker_ips_raw(broker: str):
+        res = await __class__._aget(__class__.SEARCH_BROKER_IPS, params={"company":broker})
+        return res.json()
 
 
     @staticmethod
-    async def find_broker_ips(broker: str):
-        res = await __class__._aget(__class__.SEARCH_BROKER_IPS, params={"company":broker})
-        dns_ls = res.json()["results"]
-        dns_name_ls = [dns["name"] for dns in dns_ls]
+    async def find_broker_ips(broker: str) -> list[dict[str]]:
+        res = await __class__._find_broker_ips_raw(broker)
+        # getting dns_names
+        dns_name_ls = [server["name"] for company in res  
+                       for server in company["results"]]
         if broker not in dns_name_ls: 
             raise ValueError(f"broker name {broker} not found in {dns_name_ls}")
-        ip_ls: list[str] = [dns["access"] for dns in dns_ls
-                            if broker.lower() == dns["name"].lower()][0]
+        ip_ls: list[str] = [server["access"] for company in res for server in company["results"]
+                            if broker.lower() == server["name"].lower()][0]
         ip_ls_ping = [{"ip": (ip_sep := ip.split(':'))[0], 
                        "port": ip_sep[1], 
                        "ping": await __class__.ping_host(ip_sep[0], ip_sep[1])}
@@ -101,14 +108,16 @@ class MT5Rest:
     
     
     @staticmethod
-    async def get_broker_ServerNames(broker: str):
-        res = await __class__._aget(__class__.SEARCH_BROKER_IPS, params={"company":broker})
-        dns_ls = res.json()["results"]
-        return [dns["name"] for dns in dns_ls]
+    async def get_broker_ServerNames(broker: str) -> dict[str, list[str]]:
+        res = await __class__._find_broker_ips_raw(broker)
+        dns_name_byCompany = {company["companyName"]:
+                             [server["name"] for server in company["results"]]
+                             for company in res}
+        return dns_name_byCompany
         
 
     @staticmethod
-    async def ping_host(ip: str, port: int = 443):
+    async def ping_host(ip: str, port: int = 443) -> int:
         res = await __class__._aget(__class__.PING_HOST, params={"host":ip,
                                                                  "port":port})
         ping_time = int(res.text.strip())
