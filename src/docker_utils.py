@@ -75,9 +75,13 @@ def get_container_userpass_from_id(id: str):
 
 
 def create_mt5_rest_container() -> Container:
-    container = client.containers.run(MT5Rest.IMAGE_NAME, auto_remove = True,
-                                      detach=True, ports={80: MT5Rest.PORT}, 
-                                      name="mt5rest", mem_limit="1g")
+    clear_docker_env()
+    try: 
+        container = client.containers.get("mt5rest")
+    except DockerErrors.NotFound: 
+        container = client.containers.run(MT5Rest.IMAGE_NAME, auto_remove = True,
+                                detach=True, ports={80: MT5Rest.PORT}, 
+                                name="mt5rest", mem_limit="1g")
     return container
 
 

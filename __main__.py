@@ -97,12 +97,8 @@ def edit_user_json_data(username: str, edited_json: dict):
 async def change_meta5_account_password(login: str, old: str,
                                         new: str, broker:str, delay:int = 1):
     global HOST_IP
-    clear_docker_env()
-    try: 
-        container = client.containers.get("mt5rest")
-    except DockerErrors.NotFound: 
-        container = create_mt5_rest_container()
-        await asyncio.sleep(delay)
+    container = create_mt5_rest_container()
+    await asyncio.sleep(delay)
     mt5rest = MT5Rest()
     ##### toDo: add caching for find_broker_ips
     server = (await mt5rest.find_broker_ips(broker))[0] # getting first found server
@@ -228,12 +224,8 @@ async def change_meta_password(id:int, chpwd: ChangePassword):
 @app.get("/meta5/brokers/{broker:str}/", tags=["meta5"])
 @app.get("/meta5/brokers/{broker:str}/servers", tags=["meta5"])
 async def get_active_servers(broker: str, delay: int = 1):
-    clear_docker_env()
-    try: 
-        container = client.containers.get("mt5rest")
-    except DockerErrors.NotFound: 
-        container = create_mt5_rest_container()
-        await asyncio.sleep(delay)
+    container = create_mt5_rest_container()
+    await asyncio.sleep(delay)
     server_names = await MT5Rest.get_broker_ServerNames(broker)
     container.remove(force=True)
     return {"msg": f"fetched servers for {broker}", "servers": server_names}
