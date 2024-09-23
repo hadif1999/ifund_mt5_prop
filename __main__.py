@@ -133,7 +133,7 @@ async def create_container(user: User):
     user_data_json["Password"] = mt5_password = ''
     user_data_json["Investor"] = mt5_investor = ''
     user_data_json["initial_balance"] = user.broker_userdata.balance
-    logger.debug(f"{user_json_filepath = }")
+    logger.debug(f"{user_data_json = }")
     user_json_filepath = save_user_json_data(user_data_json, username)  # saves data of config for each user
     config_dir = "/config/.wine/drive_c/users/abc/AppData/Roaming/MetaQuotes/Terminal/Common/Files"
     ##################################### building container #### 
@@ -257,7 +257,9 @@ def edit(id: str, json_data: UserExpertData):
         status_code, msg = 520, f"Error: {e}"
         raise HTTPException(status_code, msg)
     json_current_data = read_user_json_data(username)
+    logger.debug(f"previous user data -> {json_current_data = }")
     json_input_data = json_data.model_dump(exclude_unset=True)
+    logger.debug(f"new input data -> {json_input_data = }")
     new_json_data = json_current_data.copy().update(json_input_data)
     rm_user_json_data(username)
     path = save_user_json_data(new_json_data, username)
