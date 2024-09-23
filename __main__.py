@@ -260,7 +260,8 @@ def edit(id: str, json_data: UserExpertData):
     logger.debug(f"previous user data -> {json_current_data = }")
     json_input_data = json_data.model_dump(exclude_unset=True)
     logger.debug(f"new input data -> {json_input_data = }")
-    new_json_data = json_current_data.copy().update(json_input_data)
+    new_json_data = json_current_data.copy()
+    new_json_data.update(json_input_data)
     rm_user_json_data(username)
     path = save_user_json_data(new_json_data, username)
     return {"msg": f"updated user data for {username}"}
