@@ -76,7 +76,7 @@ def read_user_json_data(username: str) -> dict:
     json_file_name = json_folder_dir + f"/ifund-config.json"
     with open(json_file_name, 'r') as file:
         user_data_dict = json.loads(file.read())
-    return user_data_dict
+    return user_data_dict or {}
 
 
 def rm_user_json_data(username: str):
@@ -117,19 +117,23 @@ async def root():
 @logger.catch
 @app.post("/containers/create", tags=["container"])
 async def create_container(user: User):
+    ################### initial params 
     logger.debug(f"\nnew {user = }")
     global HOST_IP
     port = generate_random_port()
     username = user.username.replace(' ', '_').strip()
+    ########## toDo: add auto build accounts
+    
     ######################## defining initial json data #########
     user_data_json = read_json_template()
     user_data_json["Name"] = " ".join([user.broker_userdata.first_name,
                                        user.broker_userdata.second_name])
     user_data_json["Server"] = user.broker_userdata.broker
-    user_data_json["Login"] = None
-    user_data_json["Password"] = None
-    user_data_json["Investor"] = None
+    user_data_json["Login"] = mt5_login = ''
+    user_data_json["Password"] = mt5_password = ''
+    user_data_json["Investor"] = mt5_investor = ''
     user_data_json["initial_balance"] = user.broker_userdata.balance
+    logger.debug(f"{user_json_filepath = }")
     user_json_filepath = save_user_json_data(user_data_json, username)  # saves data of config for each user
     config_dir = "/config/.wine/drive_c/users/abc/AppData/Roaming/MetaQuotes/Terminal/Common/Files"
     ##################################### building container #### 
@@ -156,15 +160,7 @@ async def create_container(user: User):
     url = f"{HOST_IP}:{port}"
     password = user.password
     auth_url = f'http://{username}:{password}@{url}'    
-    ########################## adding pass and user to json ##########
-    mt5_login = ''
-    mt5_password = ''
-    mt5_investor = ''
-    user_data_json["Login"] = mt5_login
-    user_data_json["Password"] = mt5_password
-    user_data_json["Investor"] = mt5_investor
-    user_data_json["initial_balance"] = user.broker_userdata.balance
-    user_json_filepath = save_user_json_data(user_data_json, username)
+    ####################################   
     logger.debug(f"{auth_url = }")
     return {"msg": "mt5 container created",
             "ID": container.id,
@@ -261,8 +257,7 @@ def edit(id: str, json_data: UserExpertData):
         status_code, msg = 520, f"Error: {e}"
         raise HTTPException(status_code, msg)
     json_current_data = read_user_json_data(username)
-    json_input_data = json_data.model_dump(exclude_unset=True,
-                                           exclude_none=True)
+    json_input_data = json_data.model_dump(exclude_unset=True)
     new_json_data = json_current_data.copy().update(json_input_data)
     rm_user_json_data(username)
     path = save_user_json_data(new_json_data, username)
