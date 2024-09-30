@@ -197,6 +197,7 @@ def logs(id: str):
 @app.put("/meta5/password/change/loginID/{id}/", tags=["meta5"])
 async def change_meta_password(id:int, chpwd: ChangePassword):
     login, old, new, broker = (id, chpwd.old, chpwd.new, chpwd.broker)
+    logger.debug(f"{chpwd = }")
     try:
         response = await change_meta5_account_password(login, old, new, broker)
         logger.debug(f"{response = }")
