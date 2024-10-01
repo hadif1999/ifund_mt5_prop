@@ -41,4 +41,4 @@ class UserExpertData(BaseModel):
 class ChangePassword(BaseModel):
     old: str
     new: str 
-    broker: str
+    server: str
