@@ -41,7 +41,7 @@ def generate_random_port(start: int = 4000, end: int = 7000):
     unique = False
     while not unique:
         port = random.randint(start, end)
-        unique = port not in get_allocated_ports()
+        unique = port not in get_allocated_ports(image_name=mt5_image_name)
     return port
 
 

@@ -30,12 +30,12 @@ def get_image_name_from_container(container: Container) -> str:
 
 
 
-def get_allocated_ports():
-    return list(get_active_container_ports().values())
+def get_allocated_ports(image_name:str = mt5_image_name):
+    return list(get_active_container_ports(image_name=image_name).values())
 
 
-def get_active_container_ids():
-    return list(get_active_container_ports().keys())
+def get_active_container_ids(image_name:str = mt5_image_name):
+    return list(get_active_container_ports(image_name=image_name).keys())
 
 
 def get_active_container_ports(
