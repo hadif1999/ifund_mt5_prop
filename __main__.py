@@ -19,16 +19,23 @@ from src.docker_utils import (client, build_image, current_image_name_list,
                               get_allocated_ports, get_active_container_ids,
                               get_container_userpass_from_id, get_image_name_from_container, 
                               get_active_container_ports, image_exists, mt5_image_name, 
-                              create_mt5_rest_container, clear_docker_env)
+                              create_mt5_rest_container, clear_docker_env, remove_mt5rest)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     image_names = [mt5_image_name, MT5Rest.IMAGE_NAME]
-    for image_name in image_names:
+    ###### removing mt5rest container if found
+    remove_mt5rest()
+    #### clean env 
+    clear_docker_env()
+    ####### pulling needed images
+    for image_name in image_names: # pulling needed images
         if not image_exists(image_name):
                 build_image(image_name)
+    ####### 
     yield
+    remove_mt5rest()
     clear_docker_env()
 
 
@@ -37,11 +44,11 @@ users_data_dir = "./data/users/"  # keep using / at end
 HOST_IP = "51.89.168.20"
 
 
-def generate_random_port(start: int = 4000, end: int = 7000):
+def generate_random_port(start: int = 4000, end: int = 7000, image_name:str = mt5_image_name):
     unique = False
     while not unique:
         port = random.randint(start, end)
-        unique = port not in get_allocated_ports(image_name=mt5_image_name)
+        unique = port not in get_allocated_ports(image_name=image_name)
     return port
 
 
@@ -101,7 +108,7 @@ async def change_meta5_account_password(login: str, old: str,
     await asyncio.sleep(delay)
     mt5rest = MT5Rest()
     ##### toDo: add caching for find_broker_ips
-    server = (await mt5rest.find_broker_ips(broker))[0] # getting first found server
+    server = (await mt5rest.find_broker_ips(broker))[0] # getting first found server with lowest ping
     dns, dns_port = server["ip"], server["port"]
     token = await mt5rest.connect(login, old, dns, dns_port)
     response = await mt5rest.change_account_password(new)

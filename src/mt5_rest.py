@@ -15,6 +15,7 @@ class MT5Rest:
     PORT = 8000
     HOST = "127.0.0.1"
     IMAGE_NAME = "hadi1999/meta5rest:latest"
+    CONTAINER_NAME = "mt5rest"
     _transport = AsyncHTTPTransport(retries=5)
     _timeout = Timeout(10, connect=15, read=10)
         
