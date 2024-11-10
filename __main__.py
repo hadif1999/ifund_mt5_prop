@@ -254,6 +254,7 @@ def stop(id: str):
 
 
 @app.put("/containers/{id}/edit/", tags=["container"])
+@app.put("/containers/edit/{id}", tags=["container"])
 def edit(id: str, json_data: UserExpertData):
     try:
         username = client.containers.get(id).name
