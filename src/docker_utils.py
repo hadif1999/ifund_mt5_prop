@@ -89,7 +89,8 @@ def clear_docker_env():
     client.containers.prune()
     client.volumes.prune()
     import subprocess
-    subprocess.call(["docker", "builder", "prune"])
+    subprocess.call(["docker", "builder", "prune", '-f'])
+    return True
     
     
 def remove_mt5rest():
